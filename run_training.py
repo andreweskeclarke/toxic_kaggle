@@ -58,9 +58,33 @@ class Model:
                     self.labels,
                     self.logits)
 
-    def train(self):
+    def train(self, learning_rate):
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
+            optimizer = AdamWeightDecayOptimizer(
+                learning_rate=learning_rate,
+                weight_decay_rate=0.01,
+                beta_1=0.9,
+                beta_2=0.999,
+                epsilon=1e-6,
+                exclude_from_weight_decay=["LayerNorm", "layer_norm", "bias"])
+              tvars = tf.trainable_variables()
+              grads = tf.gradients(self.loss, tvars)
+
+              # This is how the model was pre-trained.
+              (grads, _) = tf.clip_by_global_norm(grads, clip_norm=1.0)
+
+              train_op = optimizer.apply_gradients(
+                  zip(grads, tvars), global_step=global_step)
+
+              # Normally the global step update is done inside of `apply_gradients`.
+              # However, `AdamWeightDecayOptimizer` doesn't do this. But if you use
+              # a different optimizer, you should probably take this line out.
+              new_global_step = global_step + 1
+              train_op = tf.group(train_op, [global_step.assign(new_global_step)])
+              return train_op
+
+
             try:
                 while True:
                     print(sess.run(self.bert_output))
