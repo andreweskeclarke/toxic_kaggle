@@ -61,6 +61,7 @@ class Model:
     def train(self, learning_rate):
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
+            global_step = tf.train.get_or_create_global_step()
             optimizer = AdamWeightDecayOptimizer(
                 learning_rate=learning_rate,
                 weight_decay_rate=0.01,
