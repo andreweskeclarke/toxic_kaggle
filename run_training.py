@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import collections
-import json
 import google_research.bert.modeling as modeling
+import google_research.bert.optimization as optimization
+import json
+import numpy as np
+import sklearn
 import tensorflow as tf
-
+from collections import deque
 
 def build_decoder(n_inputs, n_output_labels):
     def decoder(example):
@@ -24,6 +27,9 @@ class Model:
         self.n_inputs = bert_config.max_position_embeddings
         self.batch_size = train_config['batch_size']
         self.n_output_labels = train_config['n_output_labels']
+        self.learning_rate = train_config['learning_rate']
+        self.n_training_steps = train_config['n_training_steps']
+        self.n_warmup_steps = int(train_config['n_warmup_proportion'] * self.n_training_steps)
 
         with tf.variable_scope('input_parsing'):
             dataset = tf.data.TFRecordDataset([training_data])
@@ -54,46 +60,63 @@ class Model:
                     self.bert_output,
                     self.n_output_labels,
                     name='final_linear_layer')
+            self.probs = tf.math.sigmoid(self.logits)
             self.loss = tf.losses.sigmoid_cross_entropy(
                     self.labels,
                     self.logits)
 
-    def train(self, learning_rate):
+    def train(self):
         with tf.Session() as sess:
+            # global_step = tf.train.get_or_create_global_step()
+            # optimizer = optimization.AdamWeightDecayOptimizer(
+            #     learning_rate=self.learning_rate,
+            #     weight_decay_rate=0.01,
+            #     beta_1=0.9,
+            #     beta_2=0.999,
+            #     epsilon=1e-6,
+            #     exclude_from_weight_decay=["LayerNorm", "layer_norm", "bias"])
+            # tvars = tf.trainable_variables()
+            # grads = tf.gradients(self.loss, tvars)
+
+            # # This is how the model was pre-trained.
+            # (grads, _) = tf.clip_by_global_norm(grads, clip_norm=1.0)
+
+            # train_op = optimizer.apply_gradients(
+            #     zip(grads, tvars), global_step=global_step)
+
+            # # Normally the global step update is done inside of `apply_gradients`.
+            # # However, `AdamWeightDecayOptimizer` doesn't do this. But if you use
+            # # a different optimizer, you should probably take this line out.
+            # new_global_step = global_step + 1
+            # train_op = tf.group(train_op, [global_step.assign(new_global_step)])
+            train_op = optimization.create_optimizer(
+                    self.loss,
+                    self.learning_rate, 
+                    self.n_training_steps,
+                    self.n_warmup_steps,
+                    use_tpu=False)
+
             sess.run(tf.global_variables_initializer())
-            global_step = tf.train.get_or_create_global_step()
-            optimizer = AdamWeightDecayOptimizer(
-                learning_rate=learning_rate,
-                weight_decay_rate=0.01,
-                beta_1=0.9,
-                beta_2=0.999,
-                epsilon=1e-6,
-                exclude_from_weight_decay=["LayerNorm", "layer_norm", "bias"])
-              tvars = tf.trainable_variables()
-              grads = tf.gradients(self.loss, tvars)
-
-              # This is how the model was pre-trained.
-              (grads, _) = tf.clip_by_global_norm(grads, clip_norm=1.0)
-
-              train_op = optimizer.apply_gradients(
-                  zip(grads, tvars), global_step=global_step)
-
-              # Normally the global step update is done inside of `apply_gradients`.
-              # However, `AdamWeightDecayOptimizer` doesn't do this. But if you use
-              # a different optimizer, you should probably take this line out.
-              new_global_step = global_step + 1
-              train_op = tf.group(train_op, [global_step.assign(new_global_step)])
-              return train_op
-
-
-            try:
-                while True:
-                    print(sess.run(self.bert_output))
-                    print(sess.run(self.logits))
-                    print(sess.run(self.loss))
-                    input('Please press enter')
-            except:
-                pass
+            print("Running training...")
+            losses = deque(maxlen=500)
+            labels = deque(maxlen=500)
+            probs = deque(maxlen=500)
+            n_steps = 0
+            while True:
+                _, l, p, t = sess.run([train_op, self.loss, self.probs, self.labels])
+                for i in range(self.batch_size):
+                    losses.append(l)
+                    probs.append(p[i, :])
+                    labels.append(t[i, :])
+                n_steps += 1
+                if n_steps % 10 == 0:
+                    mean_xent = sum(losses) / len(losses)
+                    auc = "n/a"
+                    try:
+                        auc = "{:5.7f}".format(sklearn.metrics.roc_auc_score(np.array(labels), np.array(probs)))
+                    except ValueError as e:
+                        print(e)
+                    print('Trained step {:>10n}: loss {:>5.7f}, auc {:>12s}'.format(n_steps, mean_xent, auc))
 
 
 

@@ -1,0 +1,8 @@
+{
+  "batch_size": 2,
+  "use_one_hot_embeddings": false,
+  "n_output_labels": 6,
+  "n_warmup_proportion": 0.1,
+  "n_training_steps": 10000,
+  "learning_rate": 5e-5
+}
