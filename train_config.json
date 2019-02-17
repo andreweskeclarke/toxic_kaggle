@@ -3,6 +3,8 @@
   "use_one_hot_embeddings": false,
   "n_output_labels": 6,
   "n_warmup_proportion": 0.1,
-  "n_training_steps": 10000,
-  "learning_rate": 5e-5
+  "learning_rate": 2e-6,
+  "n_examples_per_epoch": 159571,
+  "n_epochs": 4,
+  "n_train_obs_for_plotting": 1000
 }
