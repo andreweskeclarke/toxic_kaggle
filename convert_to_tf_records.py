@@ -3,6 +3,7 @@ import argparse
 import collections
 import csv
 import tensorflow as tf
+import numpy as np
 from google_research.bert.tokenizer import FullTokenizer
 
 def main():
@@ -11,13 +12,18 @@ def main():
     parser.add_argument('--do_lower_case', action='store_true')
     parser.add_argument('--input_file', help='A file containing many lines for tokenization',
                         type=str)
-    parser.add_argument('--output_file', help='The output TF Record file',
+    parser.add_argument('--output_training_file', help='The output TF Record file',
                         type=str)
+    parser.add_argument('--output_validation_file', help='The output TF Record file',
+                        type=str)
+    parser.add_argument('--validation_ratio', help='The output TF Record file',
+                        type=float)
     parser.add_argument('--vocab_file', help='A file containing the dictionary for tokenization',
                         type=str, default='models/vocab.txt')
     args = parser.parse_args()
     tokenizer = FullTokenizer(args.vocab_file, args.do_lower_case)
-    writer = tf.python_io.TFRecordWriter(args.output_file)
+    training_writer = tf.python_io.TFRecordWriter(args.output_training_file)
+    validation_writer = tf.python_io.TFRecordWriter(args.output_validation_file)
     with open(args.input_file) as f:
         for i, row in enumerate(csv.reader(f)):
             if i == 0: continue
@@ -42,8 +48,12 @@ def main():
             features["is_real_example"] = tf.train.Feature(int64_list=tf.train.Int64List(value=[1]))
     
             tf_example = tf.train.Example(features=tf.train.Features(feature=features))
-            writer.write(tf_example.SerializeToString())
-    writer.close()
+            if np.random.random() > args.validation_ratio:
+                training_writer.write(tf_example.SerializeToString())
+            else:
+                validation_writer.write(tf_example.SerializeToString())
+    training_writer.close()
+    validation_writer.close()
 
 if __name__ == '__main__':
     main()
